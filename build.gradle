@@ -30,6 +30,19 @@ configurations {
     }
 }
 
+// Step 1.7 / B16: Testcontainers is NOT part of Spring Boot 2.6.3's dependency-management
+// BOM (verified: no testcontainers entries in spring-boot-dependencies-2.6.3.pom), so pin a
+// version explicitly rather than relying on a managed one that doesn't exist here. 1.16.3 is
+// the release contemporaneous with Boot 2.6.3 (both Jan 2022), targets JUnit 5 (this project
+// already uses useJUnitPlatform()) and Java 8+, so it runs fine on the JDK 11 toolchain this
+// build uses. Importing testcontainers-bom (rather than pinning each artifact) keeps the
+// postgresql/junit-jupiter/docker-java transitive versions mutually consistent.
+dependencyManagement {
+    imports {
+        mavenBom 'org.testcontainers:testcontainers-bom:1.16.3'
+    }
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -65,10 +78,31 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:2.2.2'
+    // Testcontainers (Step 1.7 / B16): version pinned via testcontainers-bom above.
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// The Testcontainers Postgres suite lives in its own "integrationTest" task (below)
+	// because it needs Docker; keep it out of the fast, Docker-free unit suite.
+	exclude '**/PostgresIntegrationTest.class'
+}
+
+// Step 1.7 / B16: separate task for the Testcontainers PostgreSQL integration coverage so
+// `./gradlew test` (fast suite, no Docker required) stays fast and CI-friendly, while
+// `./gradlew integrationTest` opts in to the slower, Docker-dependent real-Postgres run.
+// Reuses the existing test sourceSet/classpath rather than a new SourceSet, since it's a
+// single extra test class, not a parallel tree of sources.
+task integrationTest(type: Test) {
+	description = 'Runs the Testcontainers PostgreSQL integration test (requires local Docker).'
+	group = 'verification'
+	useJUnitPlatform()
+	include '**/PostgresIntegrationTest.class'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	shouldRunAfter test
 }
 
 tasks.named('clean') {
