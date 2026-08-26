@@ -35,6 +35,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-hateoas'
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    // Actuator: exposes health/info/prometheus on a separate management port (see
+    // application.properties) so Kubernetes liveness/readiness probes and Prometheus
+    // scraping work without going through the app's traffic port or its security filter chain.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Prometheus registry for the /actuator/prometheus scrape endpoint. runtimeOnly: only
+    // auto-configuration touches these classes, nothing in our code references them directly.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.2.2'
     implementation 'com.netflix.graphql.dgs:graphql-dgs-spring-boot-starter:4.9.21'
     implementation 'org.flywaydb:flyway-core'

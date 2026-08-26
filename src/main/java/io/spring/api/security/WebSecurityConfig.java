@@ -48,6 +48,12 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         .authorizeRequests()
         .antMatchers(HttpMethod.OPTIONS)
         .permitAll()
+        // Actuator runs on a separate port (8081, see management.server.port) but empirically
+        // still goes through this same filter chain (verified: without this rule, probes on
+        // 8081 got 401 with Spring Security's own headers attached). Kubernetes probes and
+        // Prometheus scraping must not require a JWT, so permit explicitly.
+        .antMatchers("/actuator/**")
+        .permitAll()
         .antMatchers("/graphiql")
         .permitAll()
         .antMatchers("/graphql")
