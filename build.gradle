@@ -43,6 +43,10 @@ dependencies {
                 'io.jsonwebtoken:jjwt-jackson:0.11.2'
     implementation 'joda-time:joda-time:2.10.13'
     implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
+    // Postgres driver for the optional `postgres` Spring profile (see application-postgres.properties).
+    // runtimeOnly (not implementation): must not leak onto the compile classpath; the default
+    // profile still uses SQLite, this only makes Postgres a possible target.
+    runtimeOnly 'org.postgresql:postgresql'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
