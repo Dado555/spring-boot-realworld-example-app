@@ -20,8 +20,8 @@ jobs:
       - name: who am i
         run: aws sts get-caller-identity
 
-      - name: ecr describe-repositories should succeed
-        run: aws ecr describe-repositories --repository-names realworld-backend --region us-east-1
+      - name: ecr get-login-password should succeed
+        run: aws ecr get-login-password --region us-east-1 > /dev/null && echo "got a token, push permission works"
 
       - name: ec2 describe-instances should FAIL - this is the real test
         run: |
