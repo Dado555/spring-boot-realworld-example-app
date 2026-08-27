@@ -1,0 +1,40 @@
+# Version control — never needed inside the build context
+.git
+.gitignore
+
+# Local SQLite dev database (Step 2.1 / B20) — must never leak into the image;
+# stage 2 only copies the built jar so this shouldn't be reachable either way, but
+# excluding it from the build context entirely is the belt-and-suspenders fix.
+dev.db
+*.db
+
+# Build outputs and local Gradle caches — rebuilt fresh inside the image; copying
+# host-built artifacts in would defeat Docker layer caching and could ship
+# stale or host-specific (Windows) class files.
+build/
+.gradle/
+
+# Local environment secrets / templates — real secrets are injected at container
+# runtime via -e, never baked into the image.
+.env
+.env.example
+
+# Docs and non-build-relevant assets
+*.md
+LICENSE
+example-logo.png
+graphql-schema.png
+.github/
+
+# IDE metadata
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+.apt_generated/
+.factorypath
+.springBeans
