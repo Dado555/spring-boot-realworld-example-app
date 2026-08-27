@@ -1,20 +1,20 @@
-name: verify-oidc
+name: verify-aws-keys
 
 on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: configure aws credentials via oidc
+      - name: configure aws credentials from secrets
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: arn:aws:iam::262786914511:role/gha-backend-ecr-push
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: who am i
@@ -26,8 +26,8 @@ jobs:
       - name: ec2 describe-instances should FAIL - this is the real test
         run: |
           if aws ec2 describe-instances --region us-east-1; then
-            echo "ERROR: ec2 describe-instances succeeded but should have been denied - the role is too broad"
+            echo "ERROR: ec2 describe-instances succeeded but should have been denied - the user is too broad"
             exit 1
           else
-            echo "Correctly denied - role is properly scoped"
+            echo "Correctly denied - user is properly scoped"
           fi
