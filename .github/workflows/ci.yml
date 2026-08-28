@@ -94,9 +94,93 @@ jobs:
             ${{ steps.ecr.outputs.registry }}/realworld-backend:${{ steps.sha.outputs.value }}
           docker push ${{ steps.ecr.outputs.registry }}/realworld-backend:${{ steps.sha.outputs.value }}
 
-      # automated gitops update is step 8.5's job (needs a github app token, not a
-      # long-lived pat, plus loop-prevention - not built yet). update
-      # envs/dev/backend-values.yaml in the gitops repo by hand for now.
-      - name: gitops update (deferred to step 8.5)
+      # ecr's own record of the digest, not parsed from docker cli output -
+      # unambiguous and doesn't depend on any particular docker version's format.
+      # validated below since `--output text` on a null/missing result prints the
+      # literal string "None" instead of failing - would otherwise flow straight
+      # into gitops as a broken digest with nothing downstream to catch it
+      # (validate.yml only runs on pull_request, never on this push)
+      - name: get image digest
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        run: echo "image pushed as realworld-backend:${{ steps.sha.outputs.value }} - gitops auto-update not wired up yet, see step 8.5"
+        id: digest
+        run: |
+          digest=$(aws ecr describe-images \
+            --repository-name realworld-backend \
+            --image-ids imageTag=${{ steps.sha.outputs.value }} \
+            --query 'imageDetails[0].imageDigest' --output text)
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::ecr returned an invalid digest for tag ${{ steps.sha.outputs.value }}: '$digest'"
+            exit 1
+          fi
+          echo "value=$digest" >> "$GITHUB_OUTPUT"
+
+      # short-lived token scoped only to the gitops repo, minted fresh every run -
+      # no long-lived pat in secrets, matches adr 0009's oidc-blocked fallback reasoning
+      - name: mint gitops app token
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: gitops-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: Dado555
+          repositories: gitops-realworld-example-app
+
+      - name: checkout gitops repo
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: Dado555/gitops-realworld-example-app
+          token: ${{ steps.gitops-token.outputs.token }}
+          path: gitops
+
+      # keeps both files in sync - envs/dev/backend-values.yaml (reference, what
+      # step 8.4's validate.yml checks) and the argo application's own inline
+      # valuesObject (what argo actually deploys - see apps/realworld-backend-dev.yaml)
+      - name: update gitops dev values
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          for f in gitops/envs/dev/backend-values.yaml gitops/apps/realworld-backend-dev.yaml; do
+            sed -i "s|tag: \"[^\"]*\"|tag: \"${{ steps.sha.outputs.value }}\"|" "$f"
+            sed -i "s|digest: \"sha256:[a-f0-9]*\"|digest: \"${{ steps.digest.outputs.value }}\"|" "$f"
+            # sed exits 0 even on zero matches - confirm the edit actually landed
+            # rather than trusting the exit code alone
+            if ! grep -qF "tag: \"${{ steps.sha.outputs.value }}\"" "$f" || ! grep -qF "digest: \"${{ steps.digest.outputs.value }}\"" "$f"; then
+              echo "::error::sed did not update $f as expected - has its format changed?"
+              exit 1
+            fi
+          done
+
+      # [skip ci] is defense in depth - gitops's own validate.yml only triggers on
+      # pull_request today, not push, so there's no loop yet, but this guards
+      # against one if a future step adds a push-triggered gitops workflow
+      - name: commit and push gitops update
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        working-directory: gitops
+        run: |
+          git config user.name "promoter-realworld-example-app[bot]"
+          git config user.email "322261227+promoter-realworld-example-app[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "no image change, nothing to promote"
+            exit 0
+          fi
+          git add envs/dev/backend-values.yaml apps/realworld-backend-dev.yaml
+          git commit -m "chore: promote realworld-backend to ${{ steps.sha.outputs.value }} [skip ci]
+
+          source: spring-boot-realworld-example-app@${{ github.sha }}"
+
+          # the frontend repo's own promotion can race this same push (both
+          # target gitops main independently, no shared concurrency group across
+          # repos) - retry on a non-fast-forward rejection rather than failing
+          # outright, since a rebase here is safe: each app only ever touches its
+          # own two files, so there's nothing for the two promotions to conflict on
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt/5), fetching and rebasing"
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "::error::failed to push to gitops main after 5 attempts"
+          exit 1
