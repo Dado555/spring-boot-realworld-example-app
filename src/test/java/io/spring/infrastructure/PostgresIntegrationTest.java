@@ -183,15 +183,13 @@ class PostgresIntegrationTest {
   void should_filter_articles_by_tag() {
     Article javaAndSpring =
         new Article(
-            "java and spring",
-            "desc",
-            "body",
-            Arrays.asList("java", "spring"),
-            author.getId());
+            "java and spring", "desc", "body", Arrays.asList("java", "spring"), author.getId());
     Article springOnly =
-        new Article("spring only", "desc", "body", Collections.singletonList("spring"), author.getId());
+        new Article(
+            "spring only", "desc", "body", Collections.singletonList("spring"), author.getId());
     Article pythonOnly =
-        new Article("python only", "desc", "body", Collections.singletonList("python"), author.getId());
+        new Article(
+            "python only", "desc", "body", Collections.singletonList("python"), author.getId());
     articleRepository.save(javaAndSpring);
     articleRepository.save(springOnly);
     articleRepository.save(pythonOnly);
@@ -214,7 +212,8 @@ class PostgresIntegrationTest {
   @Test
   void should_favorite_article_and_reflect_state_and_count() {
     Article article =
-        new Article("favorite me", "desc", "body", Collections.singletonList("java"), author.getId());
+        new Article(
+            "favorite me", "desc", "body", Collections.singletonList("java"), author.getId());
     articleRepository.save(article);
     User fan = new User("fan@realworld.test", "fan", "password", "", "");
     userRepository.save(fan);
@@ -246,7 +245,8 @@ class PostgresIntegrationTest {
   @Test
   void should_comment_on_article_and_read_back_content_and_author() {
     Article article =
-        new Article("commentable", "desc", "body", Collections.singletonList("java"), author.getId());
+        new Article(
+            "commentable", "desc", "body", Collections.singletonList("java"), author.getId());
     articleRepository.save(article);
     User commenter = new User("commenter@realworld.test", "commenter", "password", "", "");
     userRepository.save(commenter);
@@ -254,15 +254,13 @@ class PostgresIntegrationTest {
     Comment comment = new Comment("a real comment body", commenter.getId(), article.getId());
     commentRepository.save(comment);
 
-    List<CommentData> comments =
-        commentQueryService.findByArticleId(article.getId(), author);
+    List<CommentData> comments = commentQueryService.findByArticleId(article.getId(), author);
     assertThat(comments).hasSize(1);
     CommentData commentData = comments.get(0);
     assertThat(commentData.getBody()).isEqualTo("a real comment body");
     assertThat(commentData.getProfileData().getUsername()).isEqualTo("commenter");
 
-    Optional<CommentData> fetchedById =
-        commentQueryService.findById(comment.getId(), author);
+    Optional<CommentData> fetchedById = commentQueryService.findById(comment.getId(), author);
     assertThat(fetchedById).isPresent();
     assertThat(fetchedById.get().getBody()).isEqualTo("a real comment body");
   }
