@@ -10,4 +10,3 @@ public class RealWorldApplication {
     SpringApplication.run(RealWorldApplication.class, args);
   }
 }
-public class Foo{void bar( ){int x=1;}}
