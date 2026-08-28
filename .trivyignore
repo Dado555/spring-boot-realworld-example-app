@@ -1,0 +1,23 @@
+# Accepted-risk CRITICAL CVEs, all from the EOL Spring Boot 2.6.3 dependency chain.
+# Decision: docs/security/image-scanning.md (infra repo, local/docker-compose-stack
+# branch), Option A - accept EOL Boot as a documented risk for this portfolio/demo
+# deployment rather than force an unplanned Spring Boot 3.x migration.
+# Every CVE below has a published fix (Trivy confirms), so --ignore-unfixed does
+# NOT suppress these on its own - they're listed explicitly, one per unique CVE ID
+# even where it hits multiple artifacts (e.g. spring-webmvc and spring-beans share
+# CVE-2022-22965). Review by the exp: date - re-run the scan and re-decide then,
+# don't just push the date out.
+CVE-2025-24813 exp:2027-02-28
+CVE-2026-41293 exp:2027-02-28
+CVE-2026-43512 exp:2027-02-28
+CVE-2026-43515 exp:2027-02-28
+CVE-2024-1597 exp:2027-02-28
+CVE-2023-20873 exp:2027-02-28
+CVE-2023-34034 exp:2027-02-28
+CVE-2022-22978 exp:2027-02-28
+CVE-2022-31692 exp:2027-02-28
+CVE-2024-38821 exp:2027-02-28
+CVE-2026-22732 exp:2027-02-28
+CVE-2022-22965 exp:2027-02-28
+CVE-2016-1000027 exp:2027-02-28
+CVE-2023-20860 exp:2027-02-28

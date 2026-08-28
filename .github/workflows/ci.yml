@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: set up jdk 11
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: cache gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # cheapest and most likely to fail first
+      - name: spotless check
+        run: ./gradlew spotlessCheck --no-daemon
+
+      - name: unit tests
+        run: ./gradlew test --no-daemon
+
+      # testcontainers needs docker, which ubuntu-latest runners already have
+      - name: integration tests
+        run: ./gradlew integrationTest --no-daemon
+
+      - name: build jar
+        run: ./gradlew bootJar --no-daemon
+
+      - name: short sha
+        id: sha
+        run: echo "value=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: docker build
+        run: docker build -t realworld-backend:${{ steps.sha.outputs.value }} .
+
+      # accepted-risk CRITICAL cves (EOL spring boot 2.6.3 chain) are listed in
+      # .trivyignore, each with a review date - see docs/security/image-scanning.md
+      # (infra repo) for the decision. everything else CRITICAL-with-a-fix still
+      # gates the build; HIGH and unfixed findings are visibility-only, not a gate.
+      - name: trivy scan
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD/.trivyignore:/.trivyignore" \
+            aquasec/trivy image \
+            --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            --ignorefile /.trivyignore \
+            realworld-backend:${{ steps.sha.outputs.value }}
+
+      # everything above runs on every PR too. nothing below this line runs
+      # anywhere except a real push to master - no AWS credentials are ever
+      # loaded for a PR-triggered run, fork or otherwise.
+      - name: configure aws credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: login to ecr
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: push to ecr
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          docker tag realworld-backend:${{ steps.sha.outputs.value }} \
+            ${{ steps.ecr.outputs.registry }}/realworld-backend:${{ steps.sha.outputs.value }}
+          docker push ${{ steps.ecr.outputs.registry }}/realworld-backend:${{ steps.sha.outputs.value }}
+
+      # automated gitops update is step 8.5's job (needs a github app token, not a
+      # long-lived pat, plus loop-prevention - not built yet). update
+      # envs/dev/backend-values.yaml in the gitops repo by hand for now.
+      - name: gitops update (deferred to step 8.5)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: echo "image pushed as realworld-backend:${{ steps.sha.outputs.value }} - gitops auto-update not wired up yet, see step 8.5"
