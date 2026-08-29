@@ -156,14 +156,17 @@ jobs:
       # against one if a future step adds a push-triggered gitops workflow
       - name: commit and push gitops update
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: promote
         working-directory: gitops
         run: |
           git config user.name "promoter-realworld-example-app[bot]"
           git config user.email "322261227+promoter-realworld-example-app[bot]@users.noreply.github.com"
           if git diff --quiet; then
             echo "no image change, nothing to promote"
+            echo "promoted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
           git add envs/dev/backend-values.yaml apps/realworld-backend-dev.yaml
           git commit -m "chore: promote realworld-backend to ${{ steps.sha.outputs.value }} [skip ci]
 
@@ -184,3 +187,42 @@ jobs:
           done
           echo "::error::failed to push to gitops main after 5 attempts"
           exit 1
+
+      # opens (never merges) a pr against envs/prod/ - codeowners (step 8.4) gates
+      # the actual promotion on review, so prod stays on its current image until
+      # someone merges this. a fresh branch per promotion, not reused - simpler
+      # than deduplicating against a possibly-already-merged-or-closed prior pr,
+      # at the cost of possible pr pileup if several dev promotions land before
+      # anyone reviews one (acceptable for this project's promotion frequency)
+      - name: open prod promotion pr
+        if: steps.promote.outputs.promoted == 'true'
+        working-directory: gitops
+        env:
+          GH_TOKEN: ${{ steps.gitops-token.outputs.token }}
+        run: |
+          BRANCH="promote-prod-backend-${{ steps.sha.outputs.value }}"
+          git checkout -b "$BRANCH"
+          sed -i "s|tag: \"[^\"]*\"|tag: \"${{ steps.sha.outputs.value }}\"|" envs/prod/backend-values.yaml apps/realworld-backend-prod.yaml
+          sed -i "s|digest: \"sha256:[a-f0-9]*\"|digest: \"${{ steps.digest.outputs.value }}\"|" envs/prod/backend-values.yaml apps/realworld-backend-prod.yaml
+          if ! grep -qF "tag: \"${{ steps.sha.outputs.value }}\"" envs/prod/backend-values.yaml || ! grep -qF "tag: \"${{ steps.sha.outputs.value }}\"" apps/realworld-backend-prod.yaml; then
+            echo "::error::sed did not update the prod files as expected"
+            exit 1
+          fi
+          git add envs/prod/backend-values.yaml apps/realworld-backend-prod.yaml
+          git commit -m "chore: promote realworld-backend to ${{ steps.sha.outputs.value }} (prod)
+
+          source: spring-boot-realworld-example-app@${{ github.sha }}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --repo Dado555/gitops-realworld-example-app \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: promote realworld-backend to ${{ steps.sha.outputs.value }} (prod)" \
+            --body "Promotes \`realworld-backend\` to prod.
+
+          - Source: spring-boot-realworld-example-app@${{ github.sha }}
+          - Tag: \`${{ steps.sha.outputs.value }}\`
+          - Digest: \`${{ steps.digest.outputs.value }}\`
+          - Already live in dev as of this same run.
+
+          Merging this is the actual production deploy - Argo syncs on merge, not before."
