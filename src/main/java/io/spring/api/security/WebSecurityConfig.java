@@ -28,6 +28,11 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
   }
 
   @Bean
+  public CorrelationIdFilter correlationIdFilter() {
+    return new CorrelationIdFilter();
+  }
+
+  @Bean
   public PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
   }
@@ -67,7 +72,16 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         .anyRequest()
         .authenticated();
 
+    // jwtTokenFilter must be registered first so its class has a known position
+    // in Spring Security's filter-order comparator before correlationIdFilter
+    // references it as an anchor below - doing this in the other order throws
+    // a NullPointerException out of HttpSecurity at context startup.
+    // correlation id runs before jwtTokenFilter, so even the earliest log line
+    // for a request carries it (chained relative to jwtTokenFilter, not both
+    // independently targeting UsernamePasswordAuthenticationFilter, which would
+    // tie for the same position and leave their relative order undefined).
     http.addFilterBefore(jwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+    http.addFilterBefore(correlationIdFilter(), JwtTokenFilter.class);
   }
 
   @Bean

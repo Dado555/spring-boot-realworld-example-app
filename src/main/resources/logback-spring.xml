@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- step 9.2: json to stdout for the postgres profile (real deployments AND
+     docker-compose both run under this profile - see local/docker-compose.yml's
+     SPRING_PROFILES_ACTIVE: postgres - so this is what "after deploy" and the
+     docker-compose acceptance test both actually exercise). human-readable
+     everywhere else (bare ./gradlew bootRun, no active profile - the actual
+     "local dev" case the plan means, not docker-compose) so iterating on code
+     doesn't mean reading json in a terminal. -->
+<configuration>
+  <springProfile name="postgres">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+        <providers>
+          <timestamp/>
+          <logLevel/>
+          <loggerName/>
+          <message/>
+          <threadName/>
+          <!-- allow-listed to requestId only, so a future MDC.put() elsewhere in
+               the app can't silently start appearing in production JSON logs -->
+          <mdc>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+          </mdc>
+        </providers>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <springProfile name="!postgres">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <!-- %X{requestId} - without this the correlation id CorrelationIdFilter
+             sets is invisible here even though it's in MDC, since this pattern
+             (unlike the JSON encoder's mdc provider) doesn't include MDC by default -->
+        <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId}] %logger{36} - %msg%n</pattern>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <root level="WARN">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+
+  <!-- app code at INFO, everything else (spring, hibernate/mybatis, tomcat,
+       etc.) inherits WARN from root - controls both readability and, per
+       step 9.1, ingestion cost -->
+  <logger name="io.spring" level="INFO"/>
+</configuration>

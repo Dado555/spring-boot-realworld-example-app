@@ -63,6 +63,11 @@ dependencies {
                 'io.jsonwebtoken:jjwt-jackson:0.11.2'
     implementation 'joda-time:joda-time:2.10.13'
     implementation 'org.xerial:sqlite-jdbc:3.36.0.3'
+    // step 9.2: json console encoder for logback-spring.xml. 6.6 is the last
+    // 6.x release - built/tested against logback 1.2.3, this project resolves
+    // 1.2.10 (spring boot 2.6.3's managed version), same minor line so binary
+    // compatible. 7.0+ requires logback 1.3+, not this project's version.
+    implementation 'net.logstash.logback:logstash-logback-encoder:6.6'
     // Postgres driver for the optional `postgres` Spring profile (see application-postgres.properties).
     // runtimeOnly (not implementation): must not leak onto the compile classpath; the default
     // profile still uses SQLite, this only makes Postgres a possible target.
